@@ -62,3 +62,22 @@ fluxo com `urllib` puro: `request <CPF>` → `validate <CPF> <OTP>` →
 commitar).
 
 [blutter]: https://github.com/worawit/blutter
+
+## Endpoints extras (confirmados em login real)
+
+| Recurso | Método / path | Campos usados |
+|---|---|---|
+| Estatísticas de treino | `GET v3/training_session_stats` | `weekly_training_streak.current_weekly_count`, `training_progress.{completed_session,total_session,progress_in_percent}`, `last_training_session` |
+| Resultados do mês | `GET v1/monthly_activity_results` | `cards[].metadata.title` (nº de treinos / minutos no texto) |
+| Pendências financeiras | `GET v2/debts` | `empty_state` = em dia |
+| Convidados (Black) | `GET v1/guests` | `guests[]` (contagem) |
+| Bioimpedância | `GET v2/bioimpedances` | `measurements` (vazio se nunca mediu) |
+
+## Marca
+
+Ícone e logo oficiais extraídos do APK (`icon.png` 512×512 do bundle;
+`.../app_assets/.../training/smartfit-logo.svg`). Enviados ao
+[home-assistant/brands] em `custom_integrations/smart_fit/` para o HA exibir a
+logo.
+
+[home-assistant/brands]: https://github.com/home-assistant/brands

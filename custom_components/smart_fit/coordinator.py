@@ -51,6 +51,10 @@ class SmartFitDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         tasks: dict[str, Any] = {
             "training_sessions": self.client.async_get_training_sessions(),
+            "training_stats": self.client.async_get_training_stats(),
+            "monthly_activity": self.client.async_get_monthly_activity(),
+            "debts": self.client.async_get_debts(),
+            "guests": self.client.async_get_guests(),
         }
         if acronym:
             tasks["occupancy"] = self.client.async_get_occupancy(acronym)

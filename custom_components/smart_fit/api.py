@@ -202,6 +202,26 @@ class SmartFitApiClient:
         """Histórico de treinos / check-ins: {training_sessions:[{done_at, group, ...}]}."""
         return await self._request("GET", "v3/training_sessions")
 
+    async def async_get_training_stats(self) -> Any:
+        """Estatísticas: last_training_session, weekly_training_streak, training_progress."""
+        return await self._request("GET", "v3/training_session_stats")
+
+    async def async_get_monthly_activity(self) -> Any:
+        """Resultados do mês: {title, cards:[{tracking, metadata:{title}}]}.
+
+        `tracking` é `training_sessions` (nº de treinos) ou `training_duration`
+        (minutos); o número fica no texto de `metadata.title`.
+        """
+        return await self._request("GET", "v1/monthly_activity_results")
+
+    async def async_get_debts(self) -> Any:
+        """Pendências financeiras. Com `empty_state` = sem débitos."""
+        return await self._request("GET", "v2/debts")
+
+    async def async_get_guests(self) -> Any:
+        """Convidados (Black): {guests:[{id, name, blocked, ...}]}."""
+        return await self._request("GET", "v1/guests")
+
     async def async_get_locations(self) -> Any:
         """Lista de unidades agrupada por UF: [{uf, locations:[{acronym,name,address}]}]."""
         return await self._request("GET", "v1/locations")
