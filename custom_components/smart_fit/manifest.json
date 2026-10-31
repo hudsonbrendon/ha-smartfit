@@ -1,0 +1,14 @@
+{
+  "domain": "smart_fit",
+  "name": "Smart Fit",
+  "codeowners": [
+    "@hudsonbrendon"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/hudsonbrendon/ha-smartfit",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/hudsonbrendon/ha-smartfit/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Smart Fit",
+        "description": "Informe o CPF cadastrado na Smart Fit. Um código de verificação será enviado.",
+        "data": {
+          "document": "CPF",
+          "delivery_method": "Enviar código por",
+          "corporative": "Conta corporativa (Gympass/TotalPass)"
+        }
+      },
+      "otp": {
+        "title": "Código de verificação",
+        "description": "Digite o código que a Smart Fit enviou.",
+        "data": {
+          "code": "Código"
+        }
+      }
+    },
+    "error": {
+      "user_not_found": "CPF não encontrado na Smart Fit.",
+      "invalid_code": "Código inválido ou expirado.",
+      "cannot_connect": "Não foi possível conectar à Smart Fit.",
+      "unknown": "Erro inesperado: {error}"
+    },
+    "abort": {
+      "already_configured": "Esse CPF já está configurado."
+    }
+  }
+}
