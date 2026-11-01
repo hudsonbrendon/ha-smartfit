@@ -12,8 +12,10 @@ Assistant, via engenharia reversa do app Flutter `com.eokoe.smartfitcoach`.
 ## Entidades
 
 Uma conta vira **três dispositivos** no HA: **Smart Fit Conta** (cadastro e
-financeiro), **Smart Fit Treino** e **Smart Fit Unidade**. Datas nos atributos
-ficam em `dd/mm/aaaa`; os estados de data usam o formato do seu perfil do HA.
+financeiro), **Smart Fit Treino** e **Smart Fit Unidade**. Todas as datas —
+estados e atributos — aparecem em `dd/mm/aaaa` (com `HH:MM` quando há hora),
+independente do idioma do seu perfil. Para automações por data use os
+calendários ou os atributos `dias_para_vencer`.
 
 ### Smart Fit Conta
 
@@ -21,6 +23,7 @@ ficam em `dd/mm/aaaa`; os estados de data usam o formato do seu perfil do HA.
 |---|---|
 | **Perfil** | Nome (com foto); e-mail, telefone, nascimento, endereço, acessos liberados |
 | **Plano** / **Matrícula** | Plano (ex.: Black) e nº de matrícula |
+| **Status do plano** | Ativo/Suspenso/Cancelado…; contratado em, expira em, último congelamento, adicionais |
 | **Mensalidade** | Valor (plano, status, dia de vencimento, forma de pagamento, cliente desde, anuidade, boleto) |
 | **Cartão cadastrado** | Bandeira e final do cartão (validade) |
 | **Próximo pagamento** | Data do próximo vencimento (valor, período, agendados até 12 meses) |
@@ -53,7 +56,10 @@ ficam em `dd/mm/aaaa`; os estados de data usam o formato do seu perfil do HA.
 
 | Entidade | Descrição |
 |---|---|
-| **Unidade** | Academia do plano: endereço, cidade, CEP, inauguração, categoria, PIX/boleto |
+| **Unidade** | Academia do plano (com foto): endereço, cidade, CEP, inauguração, categoria, PIX/boleto; `latitude`/`longitude` (aparece no mapa) |
+| **Status da unidade** | Aberta / Fechada agora (segundo a Smart Fit) |
+| **Horário de hoje** | Funcionamento de hoje (ex.: `05:00 às 23:00`); a semana inteira nos atributos |
+| **Personal trainers** | Personais da unidade, com especialidades |
 | **Lotação da unidade** | Pessoas agora (curva por hora + pico) |
 | **Próxima aula coletiva** | Próxima aula (nome, professor, sala, aulas de hoje) |
 | 📅 **Aulas coletivas** | Calendário com a grade dos próximos 5 dias |

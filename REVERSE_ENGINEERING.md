@@ -119,9 +119,24 @@ O app **não** tem endpoint de histórico de pagamento; ele abre a área web
 | **Cadastro + plano** | `GET /api/v1/user` | `purchase.{membership_price,plan,confirmed_at,limit_guests}`, `plan.status`, `wallet.{masked_card_number,payment_company_name,expires_at}`, `has_pending_payments`, `count_current_guests`, `location{...}`, `bank_slip_url`, `booking_url` |
 | **Forma de pagamento** | `GET /api/v1/user-plan` | `payment_method`, `membership_due_date` (dia) |
 | Cartão | `GET /api/v3/client_space/wallet` | `data.{payment_company_name,masked_card_number,expires_at}` |
+| **Unidade (detalhe)** | `GET /api/v1/locations/{acronym}` | `data.id` (smart_system_id), `attributes.{operational-status (open/closed), latitude, longitude, picture-url, turnstile-access-face, city{...}}` |
+| **Horário da unidade** | `GET /api/v2/locations/{id}/schedules` | `{"0":{start_at,end_at,weekday}, ...}` (`weekday` 0 = domingo); dia ausente = fechado |
 | **Pagamentos** | `GET /api/v3/client_space/payments?status=payed\|scheduled\|overdue&page=1&per_page=50` | `data[]{id,dueDate,value,payed_at,paymentState,startAt,endAt,planName,siteRpsPath (recibo),invoiceDescription{url,params[Numnota,Cdverificacao]},barcode,client_bank_slip_url}` |
 
 `status` aceita **só** `overdue`, `scheduled`, `payed` (`history-installments-*.js`);
 `per_page` máx 50; o site pagina até 20 páginas. Outros status → `400 Invalid status`.
 Rotas de escrita existentes (não usadas): `POST /api/v1/user/pay-pendency`,
 `PUT /api/v2/plan/finalize_suspension`, `POST /api/v3/churn/`, `PUT /api/v1/purchase/`.
+
+O cookie `session/smart-client-space` tem `/` no nome (ilegal para `http.cookies`);
+se o aiohttp descartar o cookie, o cliente lê o `Set-Cookie` cru.
+
+## Outros endpoints (01/11)
+
+| Recurso | Path | Resultado |
+|---|---|---|
+| **Personal trainers da unidade** | `GET v3/personal/profiles` (api-mobile) | `profiles[]{name, photo, expertise[]}` — usado |
+| Notificações | `GET v1/notifications` | vazio para o aluno comum |
+| Seguidores | `GET v1/social/followers` | lista de perfis (não usado) |
+| Bioimpedância | `GET v1/smart_body/bioimpedances`, `v2/bioimpedances` | `measurements: []` sem exame Smart Body |
+| Sem dado / 404 / 500 | `v1/locations/{acronym}`, `v3/group_fitness_classes/locations`, `v1/facial_recognition`, `v3/users`, `v1/training_satisfaction_surveys`, `v1/profiles` | — |

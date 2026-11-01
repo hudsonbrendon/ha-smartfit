@@ -263,7 +263,29 @@ class SmartFitApiClient:
         """Home do app: widgets (engagement_brief, training_progress, ...)."""
         return await self._request("GET", "v1/feed")
 
+    async def async_get_personals(self) -> Any:
+        """Personal trainers da unidade: {profiles:[{name, photo, expertise[]}]}."""
+        return await self._request("GET", "v3/personal/profiles")
+
     # -- Espaço do Cliente (financeiro) ----------------------------------
+
+    async def async_get_unit(self, acronym: str) -> dict[str, Any]:
+        """Detalhe + horário de funcionamento da unidade (Espaço do Cliente).
+
+        - `detail`: `/api/v1/locations/{acronym}` → data{id, attributes{name,
+          operational-status (open/closed), latitude, longitude, picture-url, city, ...}}.
+        - `schedules`: `/api/v2/locations/{id}/schedules` →
+          {"0":{start_at:"05:00", end_at:"23:00", weekday:1}, ...} (weekday 0 = domingo).
+        """
+        detail = await self._cs_get(f"api/v1/locations/{acronym}")
+        loc_id = ((detail or {}).get("data") or {}).get("id") if isinstance(detail, dict) else None
+        schedules = None
+        if loc_id:
+            try:
+                schedules = await self._cs_get(f"api/v2/locations/{loc_id}/schedules")
+            except SmartFitApiError:
+                schedules = None
+        return {"detail": detail, "schedules": schedules}
 
     async def async_get_magic_link(self, destination_path: str = "/payment") -> str:
         """URL autenticada do Espaço do Cliente (JWT `t=` válido por 1h)."""
@@ -289,12 +311,19 @@ class SmartFitApiClient:
                 timeout=aiohttp.ClientTimeout(total=_TIMEOUT),
             ) as resp:
                 cookie = resp.cookies.get(_CS_COOKIE)
-                if resp.status != 200 or cookie is None:
+                value = cookie.value if cookie is not None else None
+                if value is None:
+                    # O "/" no nome do cookie é ilegal p/ http.cookies; alguns
+                    # aiohttp descartam o cookie. Lê o Set-Cookie cru.
+                    for raw in resp.headers.getall("Set-Cookie", []):
+                        if raw.startswith(f"{_CS_COOKIE}="):
+                            value = raw.split("=", 1)[1].split(";", 1)[0]
+                if resp.status != 200 or not value:
                     body = await resp.text()
                     raise SmartFitApiError(
                         f"Espaço do Cliente auth HTTP {resp.status}: {body[:120]}"
                     )
-                self._cs_cookie = cookie.value
+                self._cs_cookie = value
         except aiohttp.ClientError as err:
             raise SmartFitApiCommunicationError(str(err)) from err
         except TimeoutError as err:

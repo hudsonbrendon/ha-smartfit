@@ -61,6 +61,7 @@ class SmartFitDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "partners": self.client.async_get_partner_connections(),
             "feed": self.client.async_get_feed(),
             "classes": self.client.async_get_classes(),
+            "personals": self.client.async_get_personals(),
             # Espaço do Cliente (web): mensalidade, cartão, histórico de pagamentos
             "client_space": self.client.async_get_client_space(),
         }
@@ -77,4 +78,14 @@ class SmartFitDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 data[key] = None
             else:
                 data[key] = result
+        # Depois do gather: reaproveita o cookie do Espaço do Cliente já criado
+        # (evita dois magic links simultâneos).
+        data["unit"] = None
+        if acronym:
+            try:
+                data["unit"] = await self.client.async_get_unit(acronym)
+            except SmartFitApiAuthenticationError:
+                raise
+            except SmartFitApiError as err:
+                LOGGER.debug("unit indisponível: %s", err)
         return data

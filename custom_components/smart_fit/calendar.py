@@ -17,7 +17,7 @@ from homeassistant.util import dt as dt_util
 
 from .data import SmartFitConfigEntry
 from .entity import DEVICE_ACCOUNT, DEVICE_TRAINING, DEVICE_UNIT, SmartFitEntity
-from .sensor import _classes, _money, _parse_date, _parse_done_at, _payments, _sessions
+from .sensor import _br, _classes, _money, _parse_date, _parse_done_at, _payments, _sessions
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -81,7 +81,7 @@ def _payment_events(data: dict[str, Any]) -> list[CalendarEvent]:
                     start=due,
                     end=due + timedelta(days=1),
                     summary=f"Mensalidade Smart Fit R$ {val:.2f} ({label})".replace(".", ","),
-                    description=f"Plano {p.get('planName')} - período {p.get('startAt')} a {p.get('endAt')}",
+                    description=f"Plano {p.get('planName')} - período {_br(p.get('startAt'))} a {_br(p.get('endAt'))}",
                     uid=f"smartfit-payment-{p.get('id')}",
                 )
             )

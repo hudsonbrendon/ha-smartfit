@@ -501,7 +501,7 @@ def _membership_attrs(data: dict[str, Any]) -> dict[str, Any]:
     plan = _cs(data).get("user_plan") or {}
     return {
         "plano": (purchase.get("plan") or {}).get("name"),
-        "status": (u.get("plan") or {}).get("status"),
+        "status": _plan_status(data),
         "dia_vencimento": plan.get("membership_due_date"),
         "forma_pagamento": plan.get("payment_method"),
         "cliente_desde": _brd(purchase.get("confirmed_at")),
@@ -709,11 +709,104 @@ def _partners_attrs(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _unit_detail(data: dict[str, Any]) -> dict[str, Any]:
+    u = data.get("unit")
+    d = (u.get("detail") or {}).get("data") if isinstance(u, dict) else None
+    a = d.get("attributes") if isinstance(d, dict) else None
+    return a if isinstance(a, dict) else {}
+
+
+_WEEKDAYS = ("Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado")
+
+
+def _schedules(data: dict[str, Any]) -> dict[int, str]:
+    """{weekday (0 = domingo): "05:00 às 23:00"}."""
+    u = data.get("unit")
+    sch = u.get("schedules") if isinstance(u, dict) else None
+    out: dict[int, str] = {}
+    for item in (sch or {}).values() if isinstance(sch, dict) else []:
+        if isinstance(item, dict) and isinstance(item.get("weekday"), int) and item.get("start_at"):
+            out[item["weekday"]] = f"{item['start_at']} às {item.get('end_at')}"
+    return out
+
+
+def _unit_status(data: dict[str, Any]) -> str | None:
+    status = _unit_detail(data).get("operational-status")
+    return {"open": "Aberta", "closed": "Fechada"}.get(status, status)
+
+
+def _hours_today(data: dict[str, Any]) -> str | None:
+    sch = _schedules(data)
+    if not sch:
+        return None
+    return sch.get((dt_util.now().weekday() + 1) % 7, "Fechada hoje")
+
+
+def _hours_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    sch = _schedules(data)
+    return {name: sch.get(i, "Fechada") for i, name in enumerate(_WEEKDAYS)} if sch else {}
+
+
+def _unit_picture(data: dict[str, Any]) -> str | None:
+    return _unit_detail(data).get("picture-url") or None
+
+
+def _personals(data: dict[str, Any]) -> list[dict[str, Any]] | None:
+    p = data.get("personals")
+    items = p.get("profiles") if isinstance(p, dict) else None
+    return [i for i in items if isinstance(i, dict)] if isinstance(items, list) else None
+
+
+def _personals_count(data: dict[str, Any]) -> int | None:
+    items = _personals(data)
+    return len(items) if items is not None else None
+
+
+def _personals_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "personais": [
+            {"nome": i.get("name"), "especialidades": ", ".join(i.get("expertise") or [])}
+            for i in _personals(data) or []
+        ]
+    }
+
+
+def _plan_status(data: dict[str, Any]) -> str | None:
+    status = (_cs_user(data).get("plan") or {}).get("status")
+    labels = {"active": "Ativo", "inactive": "Inativo", "suspended": "Suspenso", "frozen": "Congelado", "cancelled": "Cancelado", "canceled": "Cancelado"}
+    return labels.get(status, status)
+
+
+def _plan_status_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    purchase = _cs_user(data).get("purchase") or {}
+    freeze = purchase.get("last_freeze")
+    return {
+        "plano": (purchase.get("plan") or {}).get("name"),
+        "contratado_em": _brd(purchase.get("confirmed_at")),
+        "expira_em": _brd(purchase.get("expired_at")),
+        "cancelado_em": _brd(purchase.get("cancelled")) if isinstance(purchase.get("cancelled"), str) else purchase.get("cancelled"),
+        "ultimo_congelamento": {k: _brd(v) if isinstance(v, str) else v for k, v in freeze.items()} if isinstance(freeze, dict) else freeze,
+        "pode_congelar_pela_web": purchase.get("allow_to_freeze_on_web"),
+        "adicionais": [a.get("name") if isinstance(a, dict) else a for a in purchase.get("purchase_addons") or []],
+        "beneficios_black": (purchase.get("plan") or {}).get("black_benefits"),
+    }
+
+
 def _unit_attrs(data: dict[str, Any]) -> dict[str, Any]:
     loc = _cs_user(data).get("location") or {}
     occ = data.get("occupancy") if isinstance(data.get("occupancy"), dict) else {}
     oloc = occ.get("location") or {}
+    det = _unit_detail(data)
+    coords: dict[str, float] = {}
+    try:
+        # latitude/longitude fazem a unidade aparecer no mapa do HA
+        coords = {"latitude": float(det["latitude"]), "longitude": float(det["longitude"])}
+    except (KeyError, TypeError, ValueError):
+        pass
     return {
+        **coords,
+        "status": _unit_status(data),
+        "horario_hoje": _hours_today(data),
         "acronym": loc.get("acronym") or _profile(data).get("location_acronym"),
         "endereco": loc.get("address") or oloc.get("address"),
         "bairro": loc.get("region"),
@@ -725,6 +818,7 @@ def _unit_attrs(data: dict[str, Any]) -> dict[str, Any]:
         "aceita_pix": loc.get("allow_pix_issue"),
         "aceita_boleto": loc.get("allow_bank_slip_issue"),
         "limite_convidados": loc.get("limit_guests"),
+        "catraca_reconhecimento_facial": det.get("turnstile-access-face"),
     }
 
 
@@ -812,7 +906,39 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
         icon="mdi:map-marker",
         value_fn=_unit_value,
         attrs_fn=_unit_attrs,
+        picture_fn=_unit_picture,
         device=DEVICE_UNIT,
+    ),
+    SmartFitSensorDescription(
+        key="unit_status",
+        device=DEVICE_UNIT,
+        name="Status da unidade",
+        icon="mdi:door-open",
+        value_fn=_unit_status,
+    ),
+    SmartFitSensorDescription(
+        key="unit_hours",
+        device=DEVICE_UNIT,
+        name="Horário de hoje",
+        icon="mdi:clock-outline",
+        value_fn=_hours_today,
+        attrs_fn=_hours_attrs,
+    ),
+    SmartFitSensorDescription(
+        key="personal_trainers",
+        device=DEVICE_UNIT,
+        name="Personal trainers",
+        icon="mdi:whistle",
+        native_unit_of_measurement="personais",
+        value_fn=_personals_count,
+        attrs_fn=_personals_attrs,
+    ),
+    SmartFitSensorDescription(
+        key="plan_status",
+        name="Status do plano",
+        icon="mdi:card-account-details-star",
+        value_fn=_plan_status,
+        attrs_fn=_plan_status_attrs,
     ),
     SmartFitSensorDescription(
         key="trainings_month",
@@ -861,7 +987,6 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
         device=DEVICE_TRAINING,
         name="Último treino",
         icon="mdi:dumbbell",
-        device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=_last_training,
         attrs_fn=_last_training_attrs,
     ),
@@ -951,7 +1076,6 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
         device=DEVICE_TRAINING,
         name="Validade do treino",
         icon="mdi:calendar-clock",
-        device_class=SensorDeviceClass.DATE,
         value_fn=_training_expiry,
     ),
     SmartFitSensorDescription(
@@ -967,7 +1091,6 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
         device=DEVICE_UNIT,
         name="Próxima aula coletiva",
         icon="mdi:yoga",
-        device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=_next_class,
         attrs_fn=_next_class_attrs,
     ),
@@ -992,7 +1115,6 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
         key="next_payment",
         name="Próximo pagamento",
         icon="mdi:calendar-arrow-right",
-        device_class=SensorDeviceClass.DATE,
         value_fn=_next_payment,
         attrs_fn=_next_payment_attrs,
     ),
@@ -1000,7 +1122,6 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
         key="last_payment",
         name="Último pagamento",
         icon="mdi:receipt-text-check",
-        device_class=SensorDeviceClass.DATE,
         value_fn=_last_payment,
         attrs_fn=_last_payment_attrs,
     ),
@@ -1049,7 +1170,7 @@ class SmartFitSensor(SmartFitEntity, SensorEntity):
 
     @property
     def entity_picture(self) -> str | None:
-        """Foto (perfil)."""
+        """Foto (perfil / unidade)."""
         if self.entity_description.picture_fn is None:
             return None
         try:
@@ -1062,9 +1183,12 @@ class SmartFitSensor(SmartFitEntity, SensorEntity):
         """Valor atual."""
         data = self.coordinator.data or {}
         try:
-            return self.entity_description.value_fn(data)
+            value = self.entity_description.value_fn(data)
         except (KeyError, TypeError, ValueError):
             return None
+        # O frontend formata device_class date/timestamp pelo idioma ("20 de
+        # novembro de 2026", "há 2 horas"); o estado vira texto dd/mm/aaaa.
+        return _br(value) if isinstance(value, date) else value
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:

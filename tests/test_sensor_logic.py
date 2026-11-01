@@ -82,6 +82,7 @@ def _load_sensor():
     _mod("smart_fit.entity", SmartFitEntity=type("SmartFitEntity", (), {}), DEVICE_ACCOUNT="account", DEVICE_TRAINING="training", DEVICE_UNIT="unit")
     spec = importlib.util.spec_from_file_location("smart_fit.sensor", os.path.join(root, "sensor.py"))
     mod = importlib.util.module_from_spec(spec)
+    sys.modules["smart_fit.sensor"] = mod  # dataclasses (< 3.14) procura o módulo aqui
     spec.loader.exec_module(mod)
     return mod
 
@@ -116,8 +117,13 @@ DATA = {
     "anamnese": {"last_anamnesis": [{"review_label": "Horário de treino", "value": "antes das 8:00"}, {"review_label": "Objetivo", "value": "Hipertrofia"}]},
     "partners": {"partner_connections": [{"connected_at": "2026-10-27 21:26:18 UTC", "partner": {"name": "GymRats"}}]},
     "guests": {"guests": [{"name": "Fulano", "blocked": False}], "used_guests": 0, "max_guests": 5, "renewal_date": "2026-12-01"},
+    "personals": {"profiles": [{"name": "Ariane Souza", "expertise": ["Hipertrofia", "Emagrecimento"]}]},
+    "unit": {
+        "detail": {"data": {"id": "1043", "attributes": {"operational-status": "open", "latitude": "-5.92", "longitude": "-35.26", "picture-url": "http://foto"}}},
+        "schedules": {"0": {"start_at": "05:00", "end_at": "23:00", "weekday": 1}, "6": {"start_at": "08:00", "end_at": "14:00", "weekday": 0}, "success": True},
+    },
     "client_space": {
-        "user": {"purchase": {"membership_price": "145.91", "plan": {"name": "Black"}, "confirmed_at": "2024-09-30T16:00:08.000-03:00"}, "plan": {"status": "active"}, "wallet": {"masked_card_number": "534696XX-XXXX-3517", "payment_company_name": "Mastercard"}},
+        "user": {"purchase": {"membership_price": "145.91", "plan": {"name": "Black"}, "confirmed_at": "2024-09-30T16:00:08.000-03:00", "expired_at": None}, "plan": {"status": "active"}, "wallet": {"masked_card_number": "534696XX-XXXX-3517", "payment_company_name": "Mastercard"}},
         "user_plan": {"payment_method": "Cartão de Crédito", "membership_due_date": "20"},
         "payed": [
             {"dueDate": "2026-09-20", "value": "141.19", "payed_at": "2026-09-20T00:00:00.000-03:00"},
@@ -161,6 +167,29 @@ def main() -> None:
     assert v("total_paid") == 282.38
     assert v("overdue_payments") == 1 and a("overdue_payments")["total"] == 10.5
 
+    # unidade / personais / plano
+    assert v("unit_status") == "Aberta"
+    assert v("unit_hours") == "08:00 às 14:00", "01/11/2026 é domingo (weekday 0)"
+    assert a("unit_hours")["Segunda"] == "05:00 às 23:00" and a("unit_hours")["Sábado"] == "Fechada"
+    assert a("unit")["latitude"] == -5.92 and by["unit"].picture_fn(DATA) == "http://foto"
+    assert v("personal_trainers") == 1 and a("personal_trainers")["personais"][0]["especialidades"] == "Hipertrofia, Emagrecimento"
+    assert v("plan_status") == "Ativo" and a("plan_status")["contratado_em"] == "30/09/2024"
+    assert "latitude" not in by["unit"].attrs_fn({}), "sem coordenadas não polui o mapa"
+
+    # estado de datas vira texto dd/mm/aaaa (o frontend formataria pelo idioma)
+    def state(key):
+        ent = object.__new__(s.SmartFitSensor)
+        ent.entity_description = by[key]
+        ent.coordinator = types.SimpleNamespace(data=DATA)
+        return ent.native_value
+
+    assert state("training_expiry") == "15/11/2026"
+    assert state("next_payment") == "20/11/2026" and state("last_payment") == "20/10/2026"
+    assert state("next_class") == "01/11/2026 18:00"
+    assert state("last_training") == "13/10/2026 16:13"
+    assert state("membership_price") == 145.91
+    assert not any(d.device_class in ("date", "timestamp") for d in s.SENSORS)
+
     # dados ausentes não quebram
     for d in s.SENSORS:
         d.value_fn({})
@@ -176,11 +205,13 @@ def main() -> None:
     root = os.path.join(os.path.dirname(__file__), "..", "custom_components", "smart_fit")
     spec = importlib.util.spec_from_file_location("smart_fit.calendar", os.path.join(root, "calendar.py"))
     cal = importlib.util.module_from_spec(spec)
+    sys.modules["smart_fit.calendar"] = cal
     spec.loader.exec_module(cal)
     ev = {c.key: c.events_fn(DATA) for c in cal.CALENDARS}
     assert len(ev["trainings"]) == 1 and ev["trainings"][0].summary == "Treino B - Peito"
     assert len(ev["classes"]) == 3 and ev["classes"][1].summary == "Tarde"
     assert len(ev["payments"]) == 5 and "145,91" in ev["payments"][2].summary
+    assert "28/10/2026 a 27/11/2026" in next(e.description for e in ev["payments"] if "28/10" in e.description)
     print(f"OK: {len(s.SENSORS)} sensores, {len(cal.CALENDARS)} calendários")
 
 
