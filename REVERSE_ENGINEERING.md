@@ -92,6 +92,10 @@ logo.
 | Conquistas | `GET v1/achievements` | catálogo de medalhas (sem estado do usuário) |
 | Sugestões de treino | `GET v1/training_suggestions` / `v3/recommended_trainings` | fichas prontas |
 | Parceiros | `GET v1/partner_connections` | apps conectados (GymRats etc.) |
+| Perfil social + frequência | `GET v1/social/profile` | `profile.{followers,following,friends,smartfit_at,link}`, `training.{total_sessions,frequency_in_week,expected_frequency,consecutive_frequency,sessions_in_week}` |
+| Anamnese | `GET v1/questionnaires/anamnese` | `last_anamnesis[]{review_label,value}` (respostas atuais) + `questions[]` |
+| Convidados | `GET v1/guests` | `guests[]{name,blocked}`, `used_guests`, `max_guests`, `renewal_date` |
+| Cadastro | `GET /api/v1/user` (Espaço do Cliente) | `personal{phone,personal_group.birthdate,sign_up_at}`, `address{...}` |
 | Home do app | `GET v1/feed` | widgets (training_calendar, smart_spa...) |
 
 Sem dado útil / 404 / 500 para o aluno comum: `v1/purchases`, `v1/purchase_status`,

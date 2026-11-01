@@ -79,7 +79,7 @@ def _load_sensor():
     pkg.__path__ = [root]
     sys.modules["smart_fit"] = pkg
     _mod("smart_fit.data", SmartFitConfigEntry=object)
-    _mod("smart_fit.entity", SmartFitEntity=type("SmartFitEntity", (), {}))
+    _mod("smart_fit.entity", SmartFitEntity=type("SmartFitEntity", (), {}), DEVICE_ACCOUNT="account", DEVICE_TRAINING="training", DEVICE_UNIT="unit")
     spec = importlib.util.spec_from_file_location("smart_fit.sensor", os.path.join(root, "sensor.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -109,6 +109,13 @@ DATA = {
         {"name": "Tarde", "start_at": "2026-11-01T18:00:00.000-03:00", "teacher": "Ana", "room": "Sala 1", "duration": 30},
         {"name": "Noite", "start_at": "2026-11-01T20:00:00.000-03:00"},
     ]}]},
+    "training_sessions": {"training_sessions": [
+        {"training_group_id": 1, "done_at": "2026-10-13 19:13:25 UTC", "group": "B", "duration": 3600, "description": "Peito", "exercises_done": 9, "exercises_repetitions": 400},
+    ]},
+    "social": {"profile": {"followers": 4, "following": 1, "smartfit_at": "Cliente há 2 anos"}, "training": {"frequency_in_week": 2, "expected_frequency": 4}},
+    "anamnese": {"last_anamnesis": [{"review_label": "Horário de treino", "value": "antes das 8:00"}, {"review_label": "Objetivo", "value": "Hipertrofia"}]},
+    "partners": {"partner_connections": [{"connected_at": "2026-10-27 21:26:18 UTC", "partner": {"name": "GymRats"}}]},
+    "guests": {"guests": [{"name": "Fulano", "blocked": False}], "used_guests": 0, "max_guests": 5, "renewal_date": "2026-12-01"},
     "client_space": {
         "user": {"purchase": {"membership_price": "145.91", "plan": {"name": "Black"}, "confirmed_at": "2024-09-30T16:00:08.000-03:00"}, "plan": {"status": "active"}, "wallet": {"masked_card_number": "534696XX-XXXX-3517", "payment_company_name": "Mastercard"}},
         "user_plan": {"payment_method": "Cartão de Crédito", "membership_due_date": "20"},
@@ -128,7 +135,14 @@ def main() -> None:
     v = lambda k: by[k].value_fn(DATA)  # noqa: E731
     a = lambda k: by[k].attrs_fn(DATA)  # noqa: E731
 
+    assert {d.device for d in s.SENSORS} == {"account", "training", "unit"}
     assert v("current_training") == "ABC (3x/semana)"
+    assert a("current_training")["validade"] == "15/11/2026", "datas em dd/mm/aaaa"
+    assert a("total_trainings")["historico"][0]["data"] == "13/10/2026 16:13"
+    assert v("week_frequency") == 2 and a("week_frequency")["esperada"] == 4
+    assert v("anamnese") == "Hipertrofia"
+    assert v("followers") == 4 and v("partners") == 1
+    assert a("guests")["renova_em"] == "01/12/2026"
     assert a("current_training")["dias_para_vencer"] == 14
     assert v("next_group") == "C - Costas", "grupo nunca feito vem primeiro"
     assert str(v("training_expiry")) == "2026-11-15"
@@ -139,6 +153,8 @@ def main() -> None:
     assert a("membership_price")["dia_vencimento"] == "20"
     assert v("payment_card") == "Mastercard •••• 3517"
     assert str(v("next_payment")) == "2026-11-20", "escolhe o agendado mais próximo, não o 1º da lista"
+    assert a("next_payment")["vencimento"] == "20/11/2026"
+    assert a("total_paid")["historico"][0]["pago_em"] == "20/10/2026"
     assert a("next_payment")["dias_para_vencer"] == 19
     assert str(v("last_payment")) == "2026-10-20"
     assert a("last_payment")["nota_fiscal_numero"] == "123"
@@ -150,7 +166,22 @@ def main() -> None:
         d.value_fn({})
         if d.attrs_fn:
             d.attrs_fn({})
-    print(f"OK: {len(s.SENSORS)} sensores")
+    # calendários
+    class CalendarEvent:
+        def __init__(self, **kw):
+            self.__dict__.update(kw)
+
+    _mod("homeassistant.components.calendar", CalendarEntity=type("CalendarEntity", (), {}), CalendarEntityDescription=_Desc, CalendarEvent=CalendarEvent)
+    sys.modules["smart_fit.sensor"] = s
+    root = os.path.join(os.path.dirname(__file__), "..", "custom_components", "smart_fit")
+    spec = importlib.util.spec_from_file_location("smart_fit.calendar", os.path.join(root, "calendar.py"))
+    cal = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cal)
+    ev = {c.key: c.events_fn(DATA) for c in cal.CALENDARS}
+    assert len(ev["trainings"]) == 1 and ev["trainings"][0].summary == "Treino B - Peito"
+    assert len(ev["classes"]) == 3 and ev["classes"][1].summary == "Tarde"
+    assert len(ev["payments"]) == 5 and "145,91" in ev["payments"][2].summary
+    print(f"OK: {len(s.SENSORS)} sensores, {len(cal.CALENDARS)} calendários")
 
 
 if __name__ == "__main__":

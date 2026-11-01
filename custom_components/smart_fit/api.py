@@ -246,6 +246,23 @@ class SmartFitApiClient:
         {location:{name,acronym}, schedule:[{date, classes:[{name,start_at,end_at,teacher,room,duration}]}]}."""
         return await self._request("GET", "v1/classes")
 
+    async def async_get_social_profile(self) -> Any:
+        """Perfil social + resumo de treino: {profile:{followers,following,smartfit_at,link},
+        training:{total_sessions,frequency_in_week,expected_frequency,consecutive_frequency}}."""
+        return await self._request("GET", "v1/social/profile")
+
+    async def async_get_anamnese(self) -> Any:
+        """Questionário de anamnese; `last_anamnesis:[{review_label,value}]` = respostas atuais."""
+        return await self._request("GET", "v1/questionnaires/anamnese")
+
+    async def async_get_partner_connections(self) -> Any:
+        """Apps parceiros conectados: {partner_connections:[{connected_at, partner:{name}}]}."""
+        return await self._request("GET", "v1/partner_connections")
+
+    async def async_get_feed(self) -> Any:
+        """Home do app: widgets (engagement_brief, training_progress, ...)."""
+        return await self._request("GET", "v1/feed")
+
     # -- Espaço do Cliente (financeiro) ----------------------------------
 
     async def async_get_magic_link(self, destination_path: str = "/payment") -> str:

@@ -56,6 +56,10 @@ class SmartFitDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "debts": self.client.async_get_debts(),
             "guests": self.client.async_get_guests(),
             "training": self.client.async_get_training(),
+            "social": self.client.async_get_social_profile(),
+            "anamnese": self.client.async_get_anamnese(),
+            "partners": self.client.async_get_partner_connections(),
+            "feed": self.client.async_get_feed(),
             "classes": self.client.async_get_classes(),
             # Espaço do Cliente (web): mensalidade, cartão, histórico de pagamentos
             "client_space": self.client.async_get_client_space(),

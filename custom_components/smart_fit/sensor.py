@@ -49,7 +49,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .data import SmartFitConfigEntry
-from .entity import SmartFitEntity
+from .entity import DEVICE_ACCOUNT, DEVICE_TRAINING, DEVICE_UNIT, SmartFitEntity
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -58,6 +58,8 @@ class SmartFitSensorDescription(SensorEntityDescription):
 
     value_fn: Callable[[dict[str, Any]], Any]
     attrs_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+    picture_fn: Callable[[dict[str, Any]], str | None] | None = None
+    device: str = DEVICE_ACCOUNT
 
 
 # -- helpers de acesso -------------------------------------------------
@@ -94,6 +96,39 @@ def _parse_done_at(value: Any) -> datetime | None:
         return datetime.strptime(txt, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     except ValueError:
         return None
+
+
+def _br(value: Any) -> str | None:
+    """Formata data/hora em dd/mm/aaaa (hora local quando houver)."""
+    if value is None or value == "":
+        return None
+    dt: datetime | None = None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, date):
+        return value.strftime("%d/%m/%Y")
+    elif isinstance(value, (int, float)):
+        dt = datetime.fromtimestamp(value, tz=timezone.utc)
+    elif isinstance(value, str):
+        dt = _parse_done_at(value) or dt_util.parse_datetime(value)
+        if dt is None:
+            try:
+                return date.fromisoformat(value[:10]).strftime("%d/%m/%Y")
+            except ValueError:
+                return value
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(dt_util.DEFAULT_TIME_ZONE)
+    if dt.hour or dt.minute:
+        return dt.strftime("%d/%m/%Y %H:%M")
+    return dt.strftime("%d/%m/%Y")
+
+
+def _brd(value: Any) -> str | None:
+    """Só a data, dd/mm/aaaa."""
+    out = _br(value)
+    return out[:10] if out else out
 
 
 def _first_int(text: Any) -> int | None:
@@ -155,6 +190,27 @@ def _month_minutes(data: dict[str, Any]) -> int | None:
 
 def _total_trainings(data: dict[str, Any]) -> int:
     return len(_sessions(data))
+
+
+def _sessions_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    items = sorted(
+        (s for s in _sessions(data) if _parse_done_at(s.get("done_at"))),
+        key=lambda s: _parse_done_at(s.get("done_at")),
+        reverse=True,
+    )
+    return {
+        "historico": [
+            {
+                "data": _br(s.get("done_at")),
+                "grupo": s.get("group"),
+                "descricao": s.get("description"),
+                "duracao_min": round(s["duration"] / 60) if isinstance(s.get("duration"), (int, float)) else None,
+                "exercicios": s.get("exercises_done"),
+                "repeticoes": s.get("exercises_repetitions"),
+            }
+            for s in items[:30]
+        ]
+    }
 
 
 def _weekly_streak(data: dict[str, Any]) -> Any:
@@ -300,15 +356,15 @@ def _training_attrs(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "professor": wt.get("teacher_name"),
         "frequencia_semanal": wt.get("frequency"),
-        "inicio": wt.get("start_date"),
-        "validade": expiry.isoformat() if expiry else None,
+        "inicio": _br(wt.get("start_date")),
+        "validade": _br(expiry),
         "dias_para_vencer": (expiry - dt_util.now().date()).days if expiry else None,
         "gerado_automaticamente": wt.get("automatically_generated"),
         "grupos": {
             str(g.get("letter")): {
                 "nome": g.get("label"),
                 "exercicios": len(g.get("exercises") or []),
-                "ultima_vez": (d.isoformat() if (d := _group_done_at(g)) else None),
+                "ultima_vez": _br(_group_done_at(g)),
             }
             for g in _groups(data)
         },
@@ -350,7 +406,7 @@ def _next_group_attrs(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "letra": g.get("letter"),
         "grupo_muscular": g.get("label"),
-        "ultima_vez": d.isoformat() if d else None,
+        "ultima_vez": _br(d),
         "exercicios": [
             {
                 "titulo": e.get("title"),
@@ -448,10 +504,17 @@ def _membership_attrs(data: dict[str, Any]) -> dict[str, Any]:
         "status": (u.get("plan") or {}).get("status"),
         "dia_vencimento": plan.get("membership_due_date"),
         "forma_pagamento": plan.get("payment_method"),
-        "cliente_desde": (purchase.get("confirmed_at") or "")[:10] or None,
+        "cliente_desde": _brd(purchase.get("confirmed_at")),
         "limite_convidados": purchase.get("limit_guests"),
         "convidados_atuais": u.get("count_current_guests"),
         "pendencia": u.get("has_pending_payments"),
+        "corporativo": purchase.get("is_corporate"),
+        "transferivel": purchase.get("is_transferable"),
+        "skeelo_ativo": purchase.get("skeelo_active"),
+        "anuidade": purchase.get("anual_fee_amount_to_site"),
+        "mes_anuidade": purchase.get("anual_fee_date_to_site"),
+        "beneficio_vip": u.get("has_vip_benefit"),
+        "boleto_url": u.get("bank_slip_url"),
     }
 
 
@@ -469,7 +532,7 @@ def _card_attrs(data: dict[str, Any]) -> dict[str, Any]:
         "bandeira": w.get("payment_company_name"),
         "tipo": w.get("payment_company_method"),
         "numero_mascarado": w.get("masked_card_number"),
-        "validade": w.get("expires_at"),
+        "validade": _br(w.get("expires_at")),
         "ativo": w.get("payment_company_active"),
     }
 
@@ -486,11 +549,12 @@ def _next_payment_attrs(data: dict[str, Any]) -> dict[str, Any]:
     p = sched[0]
     due = _parse_date(p.get("dueDate"))
     return {
+        "vencimento": _br(due),
         "valor": _money(p.get("value")),
-        "periodo": f"{p.get('startAt')} a {p.get('endAt')}",
+        "periodo": f"{_br(p.get('startAt'))} a {_br(p.get('endAt'))}",
         "dias_para_vencer": (due - dt_util.now().date()).days if due else None,
         "agendados": [
-            {"vencimento": q.get("dueDate"), "valor": _money(q.get("value"))} for q in sched
+            {"vencimento": _br(q.get("dueDate")), "valor": _money(q.get("value"))} for q in sched
         ],
     }
 
@@ -516,9 +580,10 @@ def _last_payment_attrs(data: dict[str, Any]) -> dict[str, Any]:
         return {}
     p = paid[0]
     return {
+        "pago_em": _br(p.get("payed_at")),
         "valor": _money(p.get("value")),
-        "vencimento": p.get("dueDate"),
-        "periodo": f"{p.get('startAt')} a {p.get('endAt')}",
+        "vencimento": _br(p.get("dueDate")),
+        "periodo": f"{_br(p.get('startAt'))} a {_br(p.get('endAt'))}",
         "plano": p.get("planName"),
         **_invoice(p),
     }
@@ -535,11 +600,11 @@ def _total_paid_attrs(data: dict[str, Any]) -> dict[str, Any]:
         "pagamentos": len(paid),
         "historico": [
             {
-                "vencimento": p.get("dueDate"),
-                "pago_em": (p.get("payed_at") or "")[:10] or None,
+                "vencimento": _br(p.get("dueDate")),
+                "pago_em": _br(p.get("payed_at")),
                 "valor": _money(p.get("value")),
             }
-            for p in paid[:24]
+            for p in paid[:36]
         ],
     }
 
@@ -554,7 +619,7 @@ def _overdue_attrs(data: dict[str, Any]) -> dict[str, Any]:
         "total": round(sum(v for p in items if (v := _money(p.get("value"))) is not None), 2),
         "atrasados": [
             {
-                "vencimento": p.get("dueDate"),
+                "vencimento": _br(p.get("dueDate")),
                 "valor": _money(p.get("value")),
                 "boleto_url": p.get("client_bank_slip_url"),
                 "codigo_barras": p.get("barcode"),
@@ -562,6 +627,170 @@ def _overdue_attrs(data: dict[str, Any]) -> dict[str, Any]:
             for p in items
         ],
     }
+
+
+# -- conta / perfil / unidade ---------------------------------------------
+
+
+def _profile_name(data: dict[str, Any]) -> Any:
+    return _profile(data).get("name") or (_cs_user(data).get("personal") or {}).get("name")
+
+
+def _profile_picture(data: dict[str, Any]) -> str | None:
+    url = _profile(data).get("photo_url")
+    return str(url) if url else None
+
+
+def _profile_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    prof = _profile(data)
+    personal = _cs_user(data).get("personal") or {}
+    phone = personal.get("phone") or {}
+    addr = _cs_user(data).get("address") or {}
+    access = (data.get("profile") or {}).get("access") or {}
+    return {
+        "email": prof.get("email") or personal.get("email"),
+        "telefone": f"({phone.get('area')}) {phone.get('number')}" if phone.get("number") else None,
+        "nascimento": _br((personal.get("personal_group") or {}).get("birthdate")),
+        "cadastro_em": _brd(personal.get("sign_up_at")),
+        "endereco": ", ".join(
+            str(x)
+            for x in (
+                addr.get("street"),
+                (addr.get("address_group_1") or {}).get("number"),
+                (addr.get("address_group_1") or {}).get("complement"),
+                addr.get("region"),
+            )
+            if x
+        )
+        or None,
+        "cep": (addr.get("address_group_0") or {}).get("zip"),
+        "anamnese_respondida": prof.get("anamnesis_answered"),
+        "parq_pendente": prof.get("parq_pending"),
+        "beneficios_black": prof.get("black_benefits"),
+        "acessos": sorted(k for k, v in access.items() if v is True),
+    }
+
+
+def _social(data: dict[str, Any]) -> dict[str, Any]:
+    so = data.get("social")
+    return so if isinstance(so, dict) else {}
+
+
+def _followers(data: dict[str, Any]) -> Any:
+    return (_social(data).get("profile") or {}).get("followers")
+
+
+def _social_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    p = _social(data).get("profile") or {}
+    return {
+        "seguindo": p.get("following"),
+        "amigos": p.get("friends"),
+        "cliente_ha": p.get("smartfit_at"),
+        "perfil_privado": p.get("private"),
+        "link": p.get("link"),
+    }
+
+
+def _partners_count(data: dict[str, Any]) -> int | None:
+    pc = data.get("partners")
+    items = pc.get("partner_connections") if isinstance(pc, dict) else None
+    return len(items) if isinstance(items, list) else None
+
+
+def _partners_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    pc = data.get("partners")
+    items = pc.get("partner_connections") if isinstance(pc, dict) else None
+    return {
+        "parceiros": [
+            {"nome": (i.get("partner") or {}).get("name"), "conectado_em": _br(i.get("connected_at"))}
+            for i in items or []
+            if isinstance(i, dict)
+        ]
+    }
+
+
+def _unit_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    loc = _cs_user(data).get("location") or {}
+    occ = data.get("occupancy") if isinstance(data.get("occupancy"), dict) else {}
+    oloc = occ.get("location") or {}
+    return {
+        "acronym": loc.get("acronym") or _profile(data).get("location_acronym"),
+        "endereco": loc.get("address") or oloc.get("address"),
+        "bairro": loc.get("region"),
+        "cidade": f"{loc.get('city_name')}/{loc.get('state_uf')}" if loc.get("city_name") else None,
+        "cep": loc.get("zipcode"),
+        "inaugurada_em": _brd(loc.get("real_opening_date")),
+        "categoria": loc.get("tier_membership"),
+        "franquia": loc.get("franchise"),
+        "aceita_pix": loc.get("allow_pix_issue"),
+        "aceita_boleto": loc.get("allow_bank_slip_issue"),
+        "limite_convidados": loc.get("limit_guests"),
+    }
+
+
+def _guests_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    g = data.get("guests") if isinstance(data.get("guests"), dict) else {}
+    return {
+        "usados": g.get("used_guests"),
+        "maximo": g.get("max_guests"),
+        "renova_em": _br(g.get("renewal_date")),
+        "convidados": [
+            {"nome": x.get("name"), "bloqueado": x.get("blocked")}
+            for x in g.get("guests") or []
+            if isinstance(x, dict)
+        ],
+    }
+
+
+# -- treino: frequência / anamnese -----------------------------------------
+
+
+def _social_training(data: dict[str, Any]) -> dict[str, Any]:
+    t = _social(data).get("training")
+    return t if isinstance(t, dict) else {}
+
+
+def _week_frequency(data: dict[str, Any]) -> Any:
+    return _social_training(data).get("frequency_in_week")
+
+
+def _week_frequency_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    t = _social_training(data)
+    wk = _stats(data).get("weekly_training_streak") or {}
+    feed = data.get("feed") if isinstance(data.get("feed"), dict) else {}
+    brief = next(
+        (w.get("metadata") or {} for w in feed.get("widgets") or [] if isinstance(w, dict) and w.get("id") == "engagement_brief"),
+        {},
+    )
+    return {
+        "esperada": t.get("expected_frequency"),
+        "semanas_consecutivas": t.get("consecutive_frequency"),
+        "treinos_na_semana": t.get("sessions_in_week"),
+        "proxima_atualizacao": _br(wk.get("update_in")),
+        "total_sessoes": t.get("total_sessions"),
+        "aulas_coletivas_feitas": brief.get("total_group_classes"),
+        "hits_feitos": brief.get("total_hit_done"),
+    }
+
+
+def _anamnese_items(data: dict[str, Any]) -> list[dict[str, Any]]:
+    a = data.get("anamnese")
+    items = a.get("last_anamnesis") if isinstance(a, dict) else None
+    return [i for i in items or [] if isinstance(i, dict)]
+
+
+def _anamnese_value(data: dict[str, Any]) -> Any:
+    """Objetivo se houver; senão a ênfase do treino; senão a 1ª resposta."""
+    items = _anamnese_items(data)
+    for needle in ("objetivo", "ênfase", "enfase"):
+        for i in items:
+            if needle in str(i.get("review_label", "")).lower():
+                return i.get("value")
+    return items[0].get("value") if items else None
+
+
+def _anamnese_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    return {str(i.get("review_label")): i.get("value") for i in _anamnese_items(data)}
 
 
 SENSORS: tuple[SmartFitSensorDescription, ...] = (
@@ -582,9 +811,12 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
         name="Unidade",
         icon="mdi:map-marker",
         value_fn=_unit_value,
+        attrs_fn=_unit_attrs,
+        device=DEVICE_UNIT,
     ),
     SmartFitSensorDescription(
         key="trainings_month",
+        device=DEVICE_TRAINING,
         name="Treinos no mês",
         icon="mdi:calendar-check",
         native_unit_of_measurement="treinos",
@@ -592,6 +824,7 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
     ),
     SmartFitSensorDescription(
         key="minutes_month",
+        device=DEVICE_TRAINING,
         name="Minutos no mês",
         icon="mdi:timer",
         native_unit_of_measurement="min",
@@ -603,9 +836,12 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
         icon="mdi:counter",
         native_unit_of_measurement="treinos",
         value_fn=_total_trainings,
+        attrs_fn=_sessions_attrs,
+        device=DEVICE_TRAINING,
     ),
     SmartFitSensorDescription(
         key="weekly_streak",
+        device=DEVICE_TRAINING,
         name="Sequência semanal",
         icon="mdi:fire",
         native_unit_of_measurement="semanas",
@@ -613,6 +849,7 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
     ),
     SmartFitSensorDescription(
         key="training_progress",
+        device=DEVICE_TRAINING,
         name="Progresso do treino",
         icon="mdi:progress-check",
         native_unit_of_measurement="%",
@@ -621,6 +858,7 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
     ),
     SmartFitSensorDescription(
         key="last_training",
+        device=DEVICE_TRAINING,
         name="Último treino",
         icon="mdi:dumbbell",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -629,6 +867,7 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
     ),
     SmartFitSensorDescription(
         key="occupancy",
+        device=DEVICE_UNIT,
         name="Lotação da unidade",
         icon="mdi:account-group",
         native_unit_of_measurement="pessoas",
@@ -647,10 +886,53 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
         icon="mdi:account-multiple-plus",
         native_unit_of_measurement="convidados",
         value_fn=_guests_count,
+        attrs_fn=_guests_attrs,
+    ),
+    SmartFitSensorDescription(
+        key="profile",
+        name="Perfil",
+        icon="mdi:account",
+        value_fn=_profile_name,
+        attrs_fn=_profile_attrs,
+        picture_fn=_profile_picture,
+    ),
+    SmartFitSensorDescription(
+        key="followers",
+        name="Seguidores",
+        icon="mdi:account-heart",
+        native_unit_of_measurement="seguidores",
+        value_fn=_followers,
+        attrs_fn=_social_attrs,
+    ),
+    SmartFitSensorDescription(
+        key="partners",
+        name="Apps conectados",
+        icon="mdi:link-variant",
+        native_unit_of_measurement="apps",
+        value_fn=_partners_count,
+        attrs_fn=_partners_attrs,
+    ),
+    SmartFitSensorDescription(
+        key="week_frequency",
+        name="Treinos na semana",
+        icon="mdi:calendar-week",
+        native_unit_of_measurement="treinos",
+        value_fn=_week_frequency,
+        attrs_fn=_week_frequency_attrs,
+        device=DEVICE_TRAINING,
+    ),
+    SmartFitSensorDescription(
+        key="anamnese",
+        name="Anamnese",
+        icon="mdi:target",
+        value_fn=_anamnese_value,
+        attrs_fn=_anamnese_attrs,
+        device=DEVICE_TRAINING,
     ),
     # -- ficha de treino / aulas
     SmartFitSensorDescription(
         key="current_training",
+        device=DEVICE_TRAINING,
         name="Ficha de treino",
         icon="mdi:clipboard-list",
         value_fn=_training_value,
@@ -658,6 +940,7 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
     ),
     SmartFitSensorDescription(
         key="next_group",
+        device=DEVICE_TRAINING,
         name="Próximo treino",
         icon="mdi:arm-flex",
         value_fn=_next_group_value,
@@ -665,6 +948,7 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
     ),
     SmartFitSensorDescription(
         key="training_expiry",
+        device=DEVICE_TRAINING,
         name="Validade do treino",
         icon="mdi:calendar-clock",
         device_class=SensorDeviceClass.DATE,
@@ -672,6 +956,7 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
     ),
     SmartFitSensorDescription(
         key="weekly_record",
+        device=DEVICE_TRAINING,
         name="Recorde semanal",
         icon="mdi:trophy",
         native_unit_of_measurement="semanas",
@@ -679,6 +964,7 @@ SENSORS: tuple[SmartFitSensorDescription, ...] = (
     ),
     SmartFitSensorDescription(
         key="next_class",
+        device=DEVICE_UNIT,
         name="Próxima aula coletiva",
         icon="mdi:yoga",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -756,10 +1042,20 @@ class SmartFitSensor(SmartFitEntity, SensorEntity):
 
     def __init__(self, coordinator, description: SmartFitSensorDescription) -> None:
         """Inicializa o sensor."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, description.device)
         self.entity_description = description
         document = coordinator.config_entry.data.get("document", "")
         self._attr_unique_id = f"{document}_{description.key}"
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Foto (perfil)."""
+        if self.entity_description.picture_fn is None:
+            return None
+        try:
+            return self.entity_description.picture_fn(self.coordinator.data or {})
+        except (KeyError, TypeError, ValueError):
+            return None
 
     @property
     def native_value(self) -> Any:

@@ -14,7 +14,7 @@ from .const import CONF_CORPORATIVE, CONF_DOCUMENT, CONF_SESSION_TOKEN, DOMAIN
 from .coordinator import SmartFitDataUpdateCoordinator
 from .data import SmartFitConfigEntry, SmartFitData
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.CALENDAR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
