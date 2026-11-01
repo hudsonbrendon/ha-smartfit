@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class SmartFitDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Puxa plano, frequência do mês e lotação da unidade a cada ciclo."""
+    """Puxa perfil, treinos, ficha, aulas, lotação e financeiro a cada ciclo."""
 
     config_entry: SmartFitConfigEntry
 
@@ -55,6 +55,10 @@ class SmartFitDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "monthly_activity": self.client.async_get_monthly_activity(),
             "debts": self.client.async_get_debts(),
             "guests": self.client.async_get_guests(),
+            "training": self.client.async_get_training(),
+            "classes": self.client.async_get_classes(),
+            # Espaço do Cliente (web): mensalidade, cartão, histórico de pagamentos
+            "client_space": self.client.async_get_client_space(),
         }
         if acronym:
             tasks["occupancy"] = self.client.async_get_occupancy(acronym)

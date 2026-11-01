@@ -40,6 +40,14 @@ APP_TOKEN = "Hi6SmkNjLUpbGbdB525CwUQs"
 DEFAULT_LOCALE = "pt-BR"
 _TIMEOUT = 20
 
+# "Espaço do Cliente" (web). O app abre essa área via magic link
+# (`POST v1/client_space/magic_link {destination_path}` → `client_space_url`
+# com um JWT `t=` de 1h). O site troca o JWT por um cookie de sessão em
+# `GET /api/v1/auth?t=<jwt>` e expõe uma API Next.js própria com os dados
+# financeiros (mensalidade, cartão, histórico de pagamentos).
+CLIENT_SPACE_URL = "https://espacodocliente.smartfit.com.br"
+_CS_COOKIE = "session/smart-client-space"
+
 
 class SmartFitApiError(Exception):
     """Erro geral da API."""
@@ -76,6 +84,7 @@ class SmartFitApiClient:
         self.document = _only_digits(document) if document else None
         self.session_token = session_token
         self.corporative = corporative
+        self._cs_cookie: str | None = None
 
     # -- Headers ---------------------------------------------------------
 
@@ -225,6 +234,106 @@ class SmartFitApiClient:
     async def async_get_locations(self) -> Any:
         """Lista de unidades agrupada por UF: [{uf, locations:[{acronym,name,address}]}]."""
         return await self._request("GET", "v1/locations")
+
+    async def async_get_training(self) -> Any:
+        """Ficha de treino atual (v2): {weight_training:{frequency, start_date,
+        finish_date(epoch), teacher_name, groups:[{letter,label,exercises,data:{done_at}}],
+        weekly_streak:{current_count,current_record}}}."""
+        return await self._request("GET", "v2/trainings")
+
+    async def async_get_classes(self) -> Any:
+        """Grade de aulas coletivas da unidade do aluno:
+        {location:{name,acronym}, schedule:[{date, classes:[{name,start_at,end_at,teacher,room,duration}]}]}."""
+        return await self._request("GET", "v1/classes")
+
+    # -- Espaço do Cliente (financeiro) ----------------------------------
+
+    async def async_get_magic_link(self, destination_path: str = "/payment") -> str:
+        """URL autenticada do Espaço do Cliente (JWT `t=` válido por 1h)."""
+        data = await self._request(
+            "POST",
+            "v1/client_space/magic_link",
+            json={"destination_path": destination_path},
+        )
+        url = (data or {}).get("client_space_url") if isinstance(data, dict) else None
+        if not url:
+            raise SmartFitApiError("magic_link sem client_space_url")
+        return str(url)
+
+    async def _cs_login(self) -> None:
+        """Troca o JWT do magic link pelo cookie de sessão do Espaço do Cliente."""
+        url = await self.async_get_magic_link()
+        token = url.split("t=", 1)[1].split("&", 1)[0]
+        try:
+            async with self._session.get(
+                f"{CLIENT_SPACE_URL}/api/v1/auth",
+                params={"t": token},
+                headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0"},
+                timeout=aiohttp.ClientTimeout(total=_TIMEOUT),
+            ) as resp:
+                cookie = resp.cookies.get(_CS_COOKIE)
+                if resp.status != 200 or cookie is None:
+                    body = await resp.text()
+                    raise SmartFitApiError(
+                        f"Espaço do Cliente auth HTTP {resp.status}: {body[:120]}"
+                    )
+                self._cs_cookie = cookie.value
+        except aiohttp.ClientError as err:
+            raise SmartFitApiCommunicationError(str(err)) from err
+        except TimeoutError as err:
+            raise SmartFitApiCommunicationError("timeout") from err
+
+    async def _cs_get(self, path: str, params: dict[str, Any] | None = None, *, _retry: bool = True) -> Any:
+        if not self._cs_cookie:
+            await self._cs_login()
+        try:
+            async with self._session.get(
+                f"{CLIENT_SPACE_URL}/{path.lstrip('/')}",
+                params=params,
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "Mozilla/5.0",
+                    "Cookie": f"{_CS_COOKIE}={self._cs_cookie}",
+                },
+                timeout=aiohttp.ClientTimeout(total=_TIMEOUT),
+            ) as resp:
+                if resp.status in (401, 405) and _retry:
+                    # cookie expirou (~21h): refaz o magic link uma vez
+                    self._cs_cookie = None
+                    return await self._cs_get(path, params, _retry=False)
+                body = await resp.text()
+                if resp.status >= 400:
+                    raise SmartFitApiError(f"Espaço do Cliente HTTP {resp.status}: {body[:160]}")
+                return await resp.json(content_type=None) if body else None
+        except aiohttp.ClientError as err:
+            raise SmartFitApiCommunicationError(str(err)) from err
+        except TimeoutError as err:
+            raise SmartFitApiCommunicationError("timeout") from err
+
+    async def async_get_client_space(self) -> dict[str, Any]:
+        """Dados financeiros do Espaço do Cliente num dict só.
+
+        - `user`: `/api/v1/user` → purchase.membership_price, plan.status,
+          wallet{masked_card_number, payment_company_name, expires_at},
+          has_pending_payments, count_current_guests, location{...}.
+        - `user_plan`: `/api/v1/user-plan` → payment_method, membership_due_date (dia).
+        - `payed`/`scheduled`/`overdue`: `/api/v3/client_space/payments?status=`
+          → data:[{id, dueDate, value, payed_at, paymentState, startAt, endAt,
+          siteRpsPath (NF-e), invoiceDescription{url,params}, barcode, client_bank_slip_url}].
+        Só a página 1 (50 itens) de cada status.
+        """
+        out: dict[str, Any] = {
+            "user": await self._cs_get("api/v1/user"),
+            "user_plan": await self._cs_get("api/v1/user-plan"),
+        }
+        for status in ("payed", "scheduled", "overdue"):
+            res = await self._cs_get(
+                "api/v3/client_space/payments",
+                {"status": status, "page": 1, "per_page": 50},
+            )
+            items = res.get("data") if isinstance(res, dict) else None
+            out[status] = items if isinstance(items, list) else []
+        return out
 
 
 def _only_digits(value: str) -> str:
