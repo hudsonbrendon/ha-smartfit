@@ -31,12 +31,11 @@ class SmartFitEntity(CoordinatorEntity[SmartFitDataUpdateCoordinator]):
         super().__init__(coordinator)
         document = coordinator.config_entry.data.get(CONF_DOCUMENT, "")
         # A conta mantém o identificador antigo (DOMAIN, document) para não
-        # quebrar entidades já criadas; os outros ficam "atrás" dela.
+        # quebrar entidades já criadas. (`via_device` está deprecado no HA 2026.10.)
         ident = document if device == DEVICE_ACCOUNT else f"{document}_{device}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, ident)},
             manufacturer="Smart Fit",
             model=_DEVICE_NAMES[device].removeprefix("Smart Fit "),
             name=_DEVICE_NAMES[device],
-            via_device=None if device == DEVICE_ACCOUNT else (DOMAIN, document),
         )
