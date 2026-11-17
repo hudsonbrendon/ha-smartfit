@@ -10,14 +10,26 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from homeassistant.components.calendar import CalendarEntity, CalendarEntityDescription, CalendarEvent
+from homeassistant.components.calendar import (
+    CalendarEntity,
+    CalendarEntityDescription,
+    CalendarEvent,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .data import SmartFitConfigEntry
 from .entity import DEVICE_ACCOUNT, DEVICE_TRAINING, DEVICE_UNIT, SmartFitEntity
-from .sensor import _br, _classes, _money, _parse_date, _parse_done_at, _payments, _sessions
+from .sensor import (
+    _br,
+    _classes,
+    _money,
+    _parse_date,
+    _parse_done_at,
+    _payments,
+    _sessions,
+)
 
 
 @dataclass(frozen=True, kw_only=True)

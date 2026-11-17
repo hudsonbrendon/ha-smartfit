@@ -1,8 +1,17 @@
 <p align="center">
-  <img src="logo.png" alt="Smart Fit" height="90">
+  <img src="custom_components/smart_fit/brand/logo@2x.png" alt="Smart Fit" height="128">
 </p>
 
 # Smart Fit — Home Assistant
+
+[![Tests](https://github.com/hudsonbrendon/ha-smartfit/actions/workflows/tests.yml/badge.svg)](https://github.com/hudsonbrendon/ha-smartfit/actions/workflows/tests.yml)
+[![Hassfest](https://github.com/hudsonbrendon/ha-smartfit/actions/workflows/hassfest.yml/badge.svg)](https://github.com/hudsonbrendon/ha-smartfit/actions/workflows/hassfest.yml)
+[![HACS](https://github.com/hudsonbrendon/ha-smartfit/actions/workflows/validate.yml/badge.svg)](https://github.com/hudsonbrendon/ha-smartfit/actions/workflows/validate.yml)
+[![Release](https://img.shields.io/github/v/release/hudsonbrendon/ha-smartfit?sort=semver)](https://github.com/hudsonbrendon/ha-smartfit/releases)
+[![Downloads](https://img.shields.io/github/downloads/hudsonbrendon/ha-smartfit/total)](https://github.com/hudsonbrendon/ha-smartfit/releases)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1.0%2B-18BCF2?logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
+[![License](https://img.shields.io/github/license/hudsonbrendon/ha-smartfit)](LICENSE)
 
 Integração (não-oficial) que traz dados da sua conta **Smart Fit** para o Home
 Assistant, via engenharia reversa do app Flutter `com.eokoe.smartfitcoach`.
@@ -68,6 +77,9 @@ Os dados financeiros vêm do **Espaço do Cliente** (web); a integração entra
 lá sozinha com um *magic link* gerado pela sessão do app, sem senha extra.
 
 ## Instalação (HACS)
+
+[![Abrir no HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=hudsonbrendon&repository=ha-smartfit&category=integration)
+[![Adicionar integração](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=smart_fit)
 
 1. HACS → Integrações → repositório custom → `hudsonbrendon/ha-smartfit`.
 2. Instale e reinicie o Home Assistant.

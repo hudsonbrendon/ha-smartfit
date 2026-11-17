@@ -35,7 +35,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -93,7 +93,7 @@ def _parse_done_at(value: Any) -> datetime | None:
         return None
     txt = value.replace(" UTC", "").replace("T", " ").replace("Z", "").strip()
     try:
-        return datetime.strptime(txt, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        return datetime.strptime(txt, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
     except ValueError:
         return None
 
@@ -108,7 +108,7 @@ def _br(value: Any) -> str | None:
     elif isinstance(value, date):
         return value.strftime("%d/%m/%Y")
     elif isinstance(value, (int, float)):
-        dt = datetime.fromtimestamp(value, tz=timezone.utc)
+        dt = datetime.fromtimestamp(value, tz=UTC)
     elif isinstance(value, str):
         dt = _parse_done_at(value) or dt_util.parse_datetime(value)
         if dt is None:
@@ -332,7 +332,7 @@ def _groups(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _epoch_date(value: Any) -> date | None:
     if isinstance(value, (int, float)) and value > 0:
-        return datetime.fromtimestamp(value, tz=timezone.utc).astimezone(dt_util.DEFAULT_TIME_ZONE).date()
+        return datetime.fromtimestamp(value, tz=UTC).astimezone(dt_util.DEFAULT_TIME_ZONE).date()
     return None
 
 
