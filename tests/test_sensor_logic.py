@@ -215,5 +215,13 @@ def main() -> None:
     print(f"OK: {len(s.SENSORS)} sensores, {len(cal.CALENDARS)} calendários")
 
 
+def test_sensor_logic() -> None:
+    # stubs replace homeassistant.* in sys.modules; restore them for the other tests
+    from unittest.mock import patch
+
+    with patch.dict(sys.modules):
+        main()
+
+
 if __name__ == "__main__":
     main()
